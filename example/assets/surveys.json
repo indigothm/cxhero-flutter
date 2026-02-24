@@ -1,0 +1,118 @@
+{
+  "surveys": [
+    {
+      "id": "rating_experience",
+      "title": "How was your experience?",
+      "message": "Quick rating to help us improve",
+      "response": {
+        "type": "options",
+        "options": ["Poor", "Fair", "Good", "Great", "Excellent"]
+      },
+      "oncePerSession": true,
+      "oncePerUser": false,
+      "cooldownSeconds": 60,
+      "trigger": {
+        "event": {
+          "name": "feature_used",
+          "properties": {
+            "feature": "premium"
+          }
+        }
+      }
+    },
+    {
+      "id": "checkout_feedback",
+      "title": "How was your checkout experience?",
+      "message": "Your feedback helps us improve our service!",
+      "response": {
+        "type": "combined",
+        "options": ["Poor", "Fair", "Good", "Great", "Excellent"],
+        "optionsLabel": "Rate your checkout experience:",
+        "textField": {
+          "label": "Tell us more about your experience (optional)",
+          "placeholder": "What could we improve? Any issues you encountered?",
+          "required": false,
+          "minLength": 10,
+          "maxLength": 500
+        },
+        "submitLabel": "Submit Feedback"
+      },
+      "trigger": {
+        "event": {
+          "name": "checkout_complete",
+          "properties": {
+            "amount": { "op": "gt", "value": 50 }
+          }
+        }
+      },
+      "oncePerSession": true,
+      "maxAttempts": 3,
+      "attemptCooldownSeconds": 300
+    },
+    {
+      "id": "general_feedback",
+      "title": "We'd love your feedback",
+      "message": "Tell us what you think about the app and how we can make it better for you.",
+      "response": {
+        "type": "text",
+        "placeholder": "Share your thoughts, suggestions, or report issues...",
+        "submitLabel": "Send Feedback",
+        "minLength": 10,
+        "maxLength": 1000
+      },
+      "trigger": {
+        "event": {
+          "name": "feedback_requested"
+        }
+      },
+      "oncePerSession": false,
+      "cooldownSeconds": 30
+    },
+    {
+      "id": "nps_survey",
+      "title": "How likely are you to recommend us?",
+      "message": "On a scale of 0-10, how likely are you to recommend our app to a friend?",
+      "response": {
+        "type": "options",
+        "options": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+      },
+      "oncePerSession": false,
+      "oncePerUser": true,
+      "trigger": {
+        "event": {
+          "name": "page_view",
+          "properties": {
+            "screen": "settings"
+          }
+        }
+      }
+    },
+    {
+      "id": "purchase_feedback",
+      "title": "Tell us about your purchase",
+      "message": "Help us understand your shopping experience better.",
+      "response": {
+        "type": "combined",
+        "options": ["Very Dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very Satisfied"],
+        "optionsLabel": "How satisfied are you with your purchase?",
+        "textField": {
+          "label": "What influenced your decision?",
+          "placeholder": "Price, quality, brand, recommendations...",
+          "required": false,
+          "maxLength": 300
+        },
+        "submitLabel": "Submit"
+      },
+      "trigger": {
+        "event": {
+          "name": "purchase_made",
+          "properties": {
+            "amount": { "op": "gte", "value": 100 }
+          }
+        }
+      },
+      "oncePerSession": true,
+      "cooldownSeconds": 3600
+    }
+  ]
+}

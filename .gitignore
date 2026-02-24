@@ -1,0 +1,35 @@
+# https://dart.dev/guides/libraries/private-files
+# Created by `dart pub`
+.dart_tool/
+.packages
+
+# Conventional directory for build output
+build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+pubspec.lock
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Android
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# Test coverage
+coverage/
