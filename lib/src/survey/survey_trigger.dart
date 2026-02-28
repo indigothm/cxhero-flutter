@@ -10,6 +10,7 @@ import '../storage/scheduled_survey_store.dart';
 import '../storage/survey_gating_store.dart';
 import 'survey_config_manager.dart';
 import 'survey_debug_config.dart';
+import 'survey_sheet.dart';
 
 /// Widget that handles survey triggering based on events
 class SurveyTrigger extends StatefulWidget {
@@ -53,12 +54,8 @@ class _SurveyTriggerState extends State<SurveyTrigger>
     super.initState();
     _config = widget.debugConfig.applyTo(widget.config);
     _recorder = widget.recorder ?? EventRecorder.instance;
-    _gating = SurveyGatingStore(
-      baseDirectory: _recorder.storageBaseDirectory,
-    );
-    _scheduledStore = ScheduledSurveyStore(
-      baseDirectory: _recorder.storageBaseDirectory,
-    );
+    _gating = SurveyGatingStore();
+    _scheduledStore = ScheduledSurveyStore();
 
     // Subscribe to events
     _eventSubscription = _recorder.eventsStream.listen(_handleEvent);
@@ -205,7 +202,7 @@ class _SurveyTriggerState extends State<SurveyTrigger>
     );
 
     final timer = Timer(Duration(seconds: delaySeconds), () async {
-      await _showSurvey(rule: rule, userId: userId);
+      _showSurvey(rule: rule, userId: userId);
       await _scheduledStore.removeScheduled(
         ruleId: rule.id,
         sessionId: sessionId,
@@ -243,11 +240,14 @@ class _SurveyTriggerState extends State<SurveyTrigger>
   }
 
   void _showSurveySheet(SurveyRule rule, String? userId) {
+    // Use root navigator to ensure sheets work regardless of where SurveyTrigger
+    // is placed in the widget tree (e.g. inside MaterialApp builder)
+    final navigator = Navigator.of(context, rootNavigator: true);
     showModalBottomSheet(
-      context: context,
+      context: navigator.context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => SurveySheet(
+      builder: (sheetContext) => SurveySheet(
         rule: rule,
         onSubmitOption: (option) {
           _recorder.record('survey_response', properties: {
@@ -256,8 +256,8 @@ class _SurveyTriggerState extends State<SurveyTrigger>
             'option': EventValue.string(option),
           });
           _markCompleted(rule.id, userId);
-          Navigator.of(context).pop();
-          setState(() => _activeRule = null);
+          Navigator.of(sheetContext).pop();
+          if (mounted) setState(() => _activeRule = null);
         },
         onSubmitText: (text) {
           _recorder.record('survey_response', properties: {
@@ -266,16 +266,16 @@ class _SurveyTriggerState extends State<SurveyTrigger>
             'text': EventValue.string(text),
           });
           _markCompleted(rule.id, userId);
-          Navigator.of(context).pop();
-          setState(() => _activeRule = null);
+          Navigator.of(sheetContext).pop();
+          if (mounted) setState(() => _activeRule = null);
         },
         onClose: () {
           _recorder.record('survey_dismissed', properties: {
             'id': EventValue.string(rule.id),
             'responseType': EventValue.string(rule.response.analyticsType),
           });
-          Navigator.of(context).pop();
-          setState(() => _activeRule = null);
+          Navigator.of(sheetContext).pop();
+          if (mounted) setState(() => _activeRule = null);
         },
       ),
     );

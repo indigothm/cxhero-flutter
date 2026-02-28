@@ -1,12 +1,18 @@
 import 'dart:convert';
-import 'dart:io';
 
-/// Manages survey gating state (shown/completed status per user)
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// SharedPreferences key prefix for survey gating
+const _kGatingPrefix = 'cxhero_gating_';
+
+/// Manages survey gating state (shown/completed status per user) via SharedPreferences.
 class SurveyGatingStore {
-  final Directory _baseDirectory;
+  SurveyGatingStore();
 
-  SurveyGatingStore({required Directory baseDirectory})
-      : _baseDirectory = baseDirectory;
+  String _key(String? userId) {
+    final folder = _safeUserFolder(userId);
+    return '${_kGatingPrefix}$folder';
+  }
 
   /// Check if a survey can be shown based on gating rules
   Future<bool> canShow({
@@ -17,11 +23,11 @@ class SurveyGatingStore {
     int? maxAttempts,
     int? attemptCooldownSeconds,
   }) async {
-    final path = _gatingFile(userId);
-    if (!await path.exists()) return true;
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_key(userId));
+      if (data == null) return true;
+
       final gating = GatingRecord.fromJson(jsonDecode(data));
       final rec = gating.rules[ruleId];
 
@@ -52,19 +58,13 @@ class SurveyGatingStore {
 
   /// Mark a survey as shown
   Future<void> markShown(String ruleId, String? userId) async {
-    final path = _gatingFile(userId);
     try {
-      if (!await path.parent.exists()) {
-        await path.parent.create(recursive: true);
-      }
-
-      GatingRecord gating;
-      if (await path.exists()) {
-        final data = await path.readAsString();
-        gating = GatingRecord.fromJson(jsonDecode(data));
-      } else {
-        gating = GatingRecord();
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final key = _key(userId);
+      final data = prefs.getString(key);
+      final gating = data != null
+          ? GatingRecord.fromJson(jsonDecode(data))
+          : GatingRecord();
 
       final existing = gating.rules[ruleId];
       if (existing != null) {
@@ -83,7 +83,7 @@ class SurveyGatingStore {
         );
       }
 
-      await path.writeAsString(jsonEncode(gating.toJson()));
+      await prefs.setString(key, jsonEncode(gating.toJson()));
     } catch (e) {
       // Ignore errors
     }
@@ -91,19 +91,13 @@ class SurveyGatingStore {
 
   /// Mark a survey as completed
   Future<void> markCompleted(String ruleId, String? userId) async {
-    final path = _gatingFile(userId);
     try {
-      if (!await path.parent.exists()) {
-        await path.parent.create(recursive: true);
-      }
-
-      GatingRecord gating;
-      if (await path.exists()) {
-        final data = await path.readAsString();
-        gating = GatingRecord.fromJson(jsonDecode(data));
-      } else {
-        gating = GatingRecord();
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final key = _key(userId);
+      final data = prefs.getString(key);
+      final gating = data != null
+          ? GatingRecord.fromJson(jsonDecode(data))
+          : GatingRecord();
 
       final existing = gating.rules[ruleId];
       if (existing != null) {
@@ -122,22 +116,15 @@ class SurveyGatingStore {
         );
       }
 
-      await path.writeAsString(jsonEncode(gating.toJson()));
+      await prefs.setString(key, jsonEncode(gating.toJson()));
     } catch (e) {
       // Ignore errors
     }
   }
 
-  File _gatingFile(String? userId) {
-    final userFolder = _safeUserFolder(userId);
-    return File(
-      '${_baseDirectory.path}/users/$userFolder/surveys/gating.json',
-    );
-  }
-
   String _safeUserFolder(String? userId) {
     if (userId == null || userId.isEmpty) return 'anon';
-    // Restrict to safe filesystem characters
+    // Restrict to safe characters
     final allowed = RegExp(r'[^a-zA-Z0-9\-_@.]');
     return userId.replaceAll(allowed, '_');
   }

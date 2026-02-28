@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'event_value.dart';
 
 // ─── Event Registry ──────────────────────────────────────────────────────────
@@ -106,8 +108,7 @@ class SurveyConfig {
     // Remove schema reference if present
     final lines = jsonString.split('\n');
     final filtered = lines.where((line) => !line.trim().startsWith('"\$schema"')).join('\n');
-    import 'dart:convert';
-    return SurveyConfig.fromJson(json.decode(filtered));
+    return SurveyConfig.fromJson(jsonDecode(filtered) as Map<String, dynamic>);
   }
 }
 

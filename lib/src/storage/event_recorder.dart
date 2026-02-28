@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/event.dart';
 import '../models/event_session.dart';
@@ -11,19 +10,24 @@ import '../models/retention_policy.dart';
 import 'event_store.dart';
 import 'scheduled_survey_store.dart';
 
+/// Prefix constants for SharedPreferences keys
+class _Keys {
+  static const String sessionPrefix = 'cxhero_session_';
+  static const String sessionListKey = 'cxhero_session_list';
+  static const String currentSessionKey = 'cxhero_current_session_id';
+  static const String eventsPrefix = 'cxhero_events_';
+}
+
 /// Coordinates session lifecycle and per-session event store.
 class SessionCoordinator {
-  final Directory _baseDirectory;
   final RetentionPolicy _retentionPolicy;
 
   EventSession? _currentSession;
   EventStore? _currentStore;
 
   SessionCoordinator({
-    required Directory baseDirectory,
     RetentionPolicy retentionPolicy = RetentionPolicy.standard,
-  })  : _baseDirectory = baseDirectory,
-        _retentionPolicy = retentionPolicy;
+  }) : _retentionPolicy = retentionPolicy;
 
   /// Start a new session
   Future<EventSession> startSession({
@@ -36,21 +40,34 @@ class SessionCoordinator {
     }
 
     final session = EventSession(userId: userId, metadata: metadata);
-    final paths = _pathsFor(session);
 
     try {
-      if (!await paths.sessionDir.exists()) {
-        await paths.sessionDir.create(recursive: true);
-      }
+      final prefs = await SharedPreferences.getInstance();
+
       // Persist session metadata
-      final metaFile = File('${paths.sessionDir.path}/session.json');
-      await metaFile.writeAsString(jsonEncode(session.toJson()));
+      await prefs.setString(
+        '${_Keys.sessionPrefix}${session.id}',
+        jsonEncode(session.toJson()),
+      );
+
+      // Track sessions list
+      final listJson = prefs.getString(_Keys.sessionListKey);
+      final ids = listJson != null
+          ? List<String>.from(jsonDecode(listJson) as List)
+          : <String>[];
+      if (!ids.contains(session.id)) {
+        ids.add(session.id);
+        await prefs.setString(_Keys.sessionListKey, jsonEncode(ids));
+      }
+
+      // Store current session id
+      await prefs.setString(_Keys.currentSessionKey, session.id);
     } catch (e) {
       // Ignore errors to keep API non-throwing
     }
 
     _currentSession = session;
-    _currentStore = EventStore(file: File('${paths.sessionDir.path}/events.jsonl'));
+    _currentStore = EventStore(key: '${_Keys.eventsPrefix}${session.id}');
     return session;
   }
 
@@ -60,11 +77,14 @@ class SessionCoordinator {
     if (session == null) return;
 
     final endedSession = session.copyWith(endedAt: DateTime.now());
-    final paths = _pathsFor(session);
 
     try {
-      final metaFile = File('${paths.sessionDir.path}/session.json');
-      await metaFile.writeAsString(jsonEncode(endedSession.toJson()));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        '${_Keys.sessionPrefix}${session.id}',
+        jsonEncode(endedSession.toJson()),
+      );
+      await prefs.remove(_Keys.currentSessionKey);
     } catch (e) {
       // Ignore errors
     }
@@ -111,24 +131,33 @@ class SessionCoordinator {
   /// Get all events across all sessions
   Future<List<Event>> allEvents() async {
     final all = <Event>[];
+    final prefs = await SharedPreferences.getInstance();
+    final listJson = prefs.getString(_Keys.sessionListKey);
+    if (listJson == null) return all;
 
-    await for (final entity in _baseDirectory.list(recursive: true)) {
-      if (entity is File && entity.path.endsWith('events.jsonl')) {
-        final store = EventStore(file: entity);
-        final events = await store.readAll();
-        all.addAll(events);
-      }
+    final ids = List<String>.from(jsonDecode(listJson) as List);
+    for (final id in ids) {
+      final store = EventStore(key: '${_Keys.eventsPrefix}$id');
+      final events = await store.readAll();
+      all.addAll(events);
     }
-
     return all;
   }
 
   /// Clear all stored data
   Future<void> clearAll() async {
     try {
-      if (await _baseDirectory.exists()) {
-        await _baseDirectory.delete(recursive: true);
+      final prefs = await SharedPreferences.getInstance();
+      final listJson = prefs.getString(_Keys.sessionListKey);
+      if (listJson != null) {
+        final ids = List<String>.from(jsonDecode(listJson) as List);
+        for (final id in ids) {
+          await prefs.remove('${_Keys.sessionPrefix}$id');
+          await prefs.remove('${_Keys.eventsPrefix}$id');
+        }
       }
+      await prefs.remove(_Keys.sessionListKey);
+      await prefs.remove(_Keys.currentSessionKey);
     } catch (e) {
       // Ignore
     }
@@ -139,148 +168,84 @@ class SessionCoordinator {
   /// List all sessions
   Future<List<EventSession>> listAllSessions() async {
     final sessions = <EventSession>[];
-
-    await for (final entity in _baseDirectory.list(recursive: true)) {
-      if (entity is File && entity.path.endsWith('session.json')) {
-        try {
-          final data = await entity.readAsString();
-          final json = jsonDecode(data) as Map<String, dynamic>;
-          sessions.add(EventSession.fromJson(json));
-        } catch (_) {
-          // Skip malformed files
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final listJson = prefs.getString(_Keys.sessionListKey);
+      if (listJson == null) return sessions;
+      final ids = List<String>.from(jsonDecode(listJson) as List);
+      for (final id in ids) {
+        final data = prefs.getString('${_Keys.sessionPrefix}$id');
+        if (data != null) {
+          try {
+            final json = jsonDecode(data) as Map<String, dynamic>;
+            sessions.add(EventSession.fromJson(json));
+          } catch (_) {
+            // Skip malformed
+          }
         }
       }
+    } catch (e) {
+      // Ignore
     }
-
     sessions.sort((a, b) => a.startedAt.compareTo(b.startedAt));
     return sessions;
   }
 
   /// List sessions for a specific user
   Future<List<EventSession>> listSessionsForUser(String? userId) async {
-    final userFolder = _safeUserFolder(userId);
-    final sessionsDir = Directory('${_baseDirectory.path}/users/$userFolder/sessions');
-
-    if (!await sessionsDir.exists()) return [];
-
-    final result = <EventSession>[];
-    await for (final dir in sessionsDir.list()) {
-      if (dir is Directory) {
-        final metaFile = File('${dir.path}/session.json');
-        if (await metaFile.exists()) {
-          try {
-            final data = await metaFile.readAsString();
-            final json = jsonDecode(data) as Map<String, dynamic>;
-            result.add(EventSession.fromJson(json));
-          } catch (_) {
-            // Skip
-          }
-        }
-      }
-    }
-
-    result.sort((a, b) => a.startedAt.compareTo(b.startedAt));
-    return result;
+    final all = await listAllSessions();
+    return all.where((s) => s.userId == userId).toList();
   }
 
   /// Get events for a specific session
   Future<List<Event>> eventsForSession(String sessionId) async {
-    await for (final entity in _baseDirectory.list(recursive: true)) {
-      if (entity is Directory && entity.path.endsWith(sessionId)) {
-        final eventsFile = File('${entity.path}/events.jsonl');
-        if (await eventsFile.exists()) {
-          final store = EventStore(file: eventsFile);
-          return await store.readAll();
-        }
-      }
-    }
-    return [];
+    final store = EventStore(key: '${_Keys.eventsPrefix}$sessionId');
+    return await store.readAll();
   }
 
   /// Apply retention policy to clean up old data
   Future<void> applyRetentionPolicy() async {
-    final usersDir = Directory('${_baseDirectory.path}/users');
-    if (!await usersDir.exists()) return;
+    try {
+      final sessions = await listAllSessions();
+      final prefs = await SharedPreferences.getInstance();
+      final currentId = _currentSession?.id;
 
-    await for (final userDir in usersDir.list()) {
-      if (userDir is Directory) {
-        final sessionsDir = Directory('${userDir.path}/sessions');
-        if (await sessionsDir.exists()) {
-          await _cleanupUserSessions(sessionsDir);
+      var toKeep = sessions.where((s) => s.id != currentId).toList();
+
+      // Age-based retention
+      final maxAge = _retentionPolicy.maxAge;
+      if (maxAge != null) {
+        final cutoff = DateTime.now().subtract(maxAge);
+        final toDelete = toKeep.where((s) => s.startedAt.isBefore(cutoff));
+        for (final s in toDelete) {
+          await prefs.remove('${_Keys.sessionPrefix}${s.id}');
+          await prefs.remove('${_Keys.eventsPrefix}${s.id}');
         }
+        toKeep = toKeep.where((s) => !s.startedAt.isBefore(cutoff)).toList();
       }
+
+      // Count-based retention
+      final maxCount = _retentionPolicy.maxSessionsPerUser;
+      if (maxCount != null && toKeep.length > maxCount) {
+        toKeep.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+        final extras = toKeep.skip(maxCount);
+        for (final s in extras) {
+          await prefs.remove('${_Keys.sessionPrefix}${s.id}');
+          await prefs.remove('${_Keys.eventsPrefix}${s.id}');
+        }
+        toKeep = toKeep.take(maxCount).toList();
+      }
+
+      // Update the sessions list
+      final retainedIds = [
+        if (currentId != null) currentId,
+        ...toKeep.map((s) => s.id),
+      ];
+      await prefs.setString(_Keys.sessionListKey, jsonEncode(retainedIds));
+    } catch (e) {
+      // Ignore
     }
   }
-
-  Future<void> _cleanupUserSessions(Directory sessionsDir) async {
-    final sessions = <({Directory dir, EventSession session})>[];
-
-    await for (final dir in sessionsDir.list()) {
-      if (dir is Directory) {
-        final metaFile = File('${dir.path}/session.json');
-        if (await metaFile.exists()) {
-          try {
-            final data = await metaFile.readAsString();
-            final json = jsonDecode(data) as Map<String, dynamic>;
-            sessions.add((dir: dir, session: EventSession.fromJson(json)));
-          } catch (_) {
-            // Skip
-          }
-        }
-      }
-    }
-
-    final currentSessionId = _currentSession?.id;
-
-    // Apply age-based retention
-    final maxAge = _retentionPolicy.maxAge;
-    if (maxAge != null) {
-      final cutoffDate = DateTime.now().subtract(maxAge);
-      for (final item in sessions) {
-        if (item.session.id == currentSessionId) continue;
-        if (item.session.startedAt.isBefore(cutoffDate)) {
-          await item.dir.delete(recursive: true);
-        }
-      }
-      sessions.removeWhere(
-        (s) => s.session.startedAt.isBefore(cutoffDate),
-      );
-    }
-
-    // Apply count-based retention
-    final maxCount = _retentionPolicy.maxSessionsPerUser;
-    if (maxCount != null && sessions.length > maxCount) {
-      // Sort by start date (newest first)
-      sessions.sort((a, b) => b.session.startedAt.compareTo(a.session.startedAt));
-
-      // Delete sessions beyond the limit
-      for (var i = maxCount; i < sessions.length; i++) {
-        if (sessions[i].session.id != currentSessionId) {
-          await sessions[i].dir.delete(recursive: true);
-        }
-      }
-    }
-  }
-
-  _SessionPaths _pathsFor(EventSession session) {
-    final userFolder = _safeUserFolder(session.userId);
-    final sessionDir = Directory(
-      '${_baseDirectory.path}/users/$userFolder/sessions/${session.id}',
-    );
-    return _SessionPaths(sessionDir: sessionDir);
-  }
-
-  String _safeUserFolder(String? userId) {
-    if (userId == null || userId.isEmpty) return 'anon';
-    final allowed = RegExp(r'[^a-zA-Z0-9\-_@.]');
-    return userId.replaceAll(allowed, '_');
-  }
-}
-
-class _SessionPaths {
-  final Directory sessionDir;
-
-  _SessionPaths({required this.sessionDir});
 }
 
 /// Public singleton interface for recording and inspecting events
@@ -290,14 +255,12 @@ class EventRecorder {
   /// Singleton instance
   static EventRecorder get instance {
     _instance ??= EventRecorder._internal(
-      directory: Directory(''),
       retentionPolicy: RetentionPolicy.standard,
     );
     return _instance!;
   }
 
   late final SessionCoordinator _coordinator;
-  late final Directory _baseDirectory;
   final _eventController = StreamController<Event>.broadcast();
   final _sessionController = StreamController<SessionLifecycleEvent>.broadcast();
 
@@ -306,17 +269,14 @@ class EventRecorder {
   bool _initialized = false;
 
   EventRecorder._internal({
-    required Directory directory,
     required this.retentionPolicy,
-  }) : _baseDirectory = directory;
+  });
 
   /// Factory constructor for creating instances with custom configuration
   factory EventRecorder({
-    Directory? directory,
     RetentionPolicy retentionPolicy = RetentionPolicy.standard,
   }) {
     return EventRecorder._internal(
-      directory: directory ?? Directory(''),
       retentionPolicy: retentionPolicy,
     );
   }
@@ -325,18 +285,7 @@ class EventRecorder {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    if (_baseDirectory.path.isEmpty) {
-      final appDir = await getApplicationDocumentsDirectory();
-      _baseDirectory = Directory('${appDir.path}/CXHero');
-    }
-
-    if (!await _baseDirectory.exists()) {
-      await _baseDirectory.create(recursive: true);
-    }
-
-    // Re-initialize coordinator with proper directory
     _coordinator = SessionCoordinator(
-      baseDirectory: _baseDirectory,
       retentionPolicy: retentionPolicy,
     );
 
@@ -415,16 +364,7 @@ class EventRecorder {
   /// Stream of session lifecycle events
   Stream<SessionLifecycleEvent> get sessionStream => _sessionController.stream;
 
-  // MARK: - Storage & Analytics helpers
-
-  /// Base directory for storage
-  Directory get storageBaseDirectory {
-    // Lazy initialization
-    if (!_initialized) {
-      Future.value(initialize());
-    }
-    return _baseDirectory;
-  }
+  // MARK: - Analytics helpers
 
   /// List all sessions
   Future<List<EventSession>> listAllSessions() async {
@@ -453,16 +393,17 @@ class EventRecorder {
   /// Check if there are any scheduled surveys for a user
   Future<bool> hasScheduledSurveys({String? userId}) async {
     await initialize();
-    final store = ScheduledSurveyStore(baseDirectory: _baseDirectory);
+    final store = ScheduledSurveyStore();
     final triggered = await store.getAllTriggeredSurveys(userId);
     final pending = await store.getAllPendingSurveys(userId);
     return triggered.isNotEmpty || pending.isNotEmpty;
   }
 
   /// Clean up old scheduled surveys
-  Future<void> cleanupOldScheduledSurveys({Duration olderThan = const Duration(hours: 24)}) async {
+  Future<void> cleanupOldScheduledSurveys(
+      {Duration olderThan = const Duration(hours: 24)}) async {
     await initialize();
-    final store = ScheduledSurveyStore(baseDirectory: _baseDirectory);
+    final store = ScheduledSurveyStore();
     await store.cleanupOldScheduled(olderThan: olderThan);
   }
 }

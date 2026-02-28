@@ -1,6 +1,7 @@
 import 'package:cxhero/cxhero.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,37 +37,46 @@ class CXHeroDemoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SurveyTrigger(
-      config: config,
-      // Uncomment for debug mode to test surveys repeatedly:
-      // debugConfig: SurveyDebugConfig.debug,
-      child: MaterialApp(
-        title: 'CXHero Demo',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-          cardTheme: CardTheme(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+    return MaterialApp(
+      title: 'CXHero Demo',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-          cardTheme: CardTheme(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
         ),
-        home: const MainScreen(),
+        useMaterial3: true,
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      // SurveyTrigger must be INSIDE the Navigator so showModalBottomSheet
+      // can find the Overlay. Using Builder here gives us a context that is
+      // inside MaterialApp's Navigator/Overlay stack.
+      home: Builder(
+        builder: (context) => SurveyTrigger(
+          config: config,
+          debugConfig: const SurveyDebugConfig(
+            enabled: true,
+            overrideScheduleDelay: null, // show immediately, no delay override
+            bypassGating: true,          // bypass gating for demo
+          ),
+          child: const MainScreen(),
+        ),
       ),
     );
   }
 }
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -769,7 +779,7 @@ class _EventLogTabState extends State<EventLogTab> {
                   itemCount: _events.length,
                   itemBuilder: (context, index) {
                     final event = _events[_events.length - 1 - index]; // Reverse order
-                    return _EventTile(event: event, index: _events.length - index);
+                    return _EventTile(event, _events.length - index);
                   },
                 ),
       floatingActionButton: FloatingActionButton(
@@ -893,8 +903,11 @@ class SettingsTab extends StatelessWidget {
                       subtitle: const Text('View where data is stored'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
-                        final dir = EventRecorder.instance.storageBaseDirectory;
-                        _showInfoDialog(context, 'Storage', dir.path);
+                        _showInfoDialog(
+                          context,
+                          'Storage',
+                          'SharedPreferences (browser localStorage on web, app documents on native)',
+                        );
                       },
                     ),
                     const Divider(height: 1),
@@ -907,6 +920,26 @@ class SettingsTab extends StatelessWidget {
                         await EventRecorder.instance.applyRetentionPolicy();
                         if (context.mounted) {
                           _showSnack(context, 'Retention policy applied');
+                        }
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.refresh, color: Colors.orange),
+                      title: const Text('Reset Survey State'),
+                      subtitle: const Text('Clear survey gating (shown/completed state)'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        final keys = prefs.getKeys();
+                        for (final key in keys) {
+                          if (key.startsWith('cxhero_gating_') ||
+                              key.startsWith('cxhero_scheduled_')) {
+                            await prefs.remove(key);
+                          }
+                        }
+                        if (context.mounted) {
+                          _showSnack(context, 'Survey state cleared — surveys will show again');
                         }
                       },
                     ),

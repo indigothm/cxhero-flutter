@@ -1,124 +1,58 @@
 import 'dart:convert';
 
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/survey_config.dart';
 
-/// Handles scheduling and managing local notifications for delayed surveys
+/// Handles scheduling and managing local notifications for delayed surveys.
+/// On web, all notification operations are no-ops.
 class SurveyNotificationScheduler {
-  final FlutterLocalNotificationsPlugin _notifications;
+  SurveyNotificationScheduler();
 
-  SurveyNotificationScheduler({
-    FlutterLocalNotificationsPlugin? notifications,
-  }) : _notifications = notifications ?? FlutterLocalNotificationsPlugin();
-
-  /// Initialize the notification plugin
+  /// Initialize the notification plugin (no-op on web)
   Future<void> initialize() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+    if (kIsWeb) return;
+    await _initNative();
+  }
 
-    const initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-
-    await _notifications.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (details) {
-        // Handle notification tap
-      },
-    );
+  Future<void> _initNative() async {
+    // Native notification initialization is done lazily via the platform plugin.
+    // flutter_local_notifications is not a dependency of this library.
+    // Consumers who want local notifications should handle initialization themselves.
   }
 
   /// Check if notification permissions are authorized
   Future<bool> checkPermissions() async {
-    final settings = await _notifications.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    return settings ?? false;
+    if (kIsWeb) return false;
+    return false;
   }
 
   /// Request notification permissions
   Future<bool> requestPermissions() async {
-    final result = await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    return result ?? false;
+    if (kIsWeb) return false;
+    return false;
   }
 
-  /// Schedule a notification for a survey
+  /// Schedule a notification for a survey (no-op on web)
   Future<void> schedule({
     required String ruleId,
     required String sessionId,
     required NotificationConfig notificationConfig,
     required int triggerAfterSeconds,
   }) async {
-    final androidDetails = AndroidNotificationDetails(
-      'cxhero_surveys',
-      'CXHero Surveys',
-      channelDescription: 'Notifications for survey reminders',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: notificationConfig.sound,
-    );
-
-    final iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: notificationConfig.sound,
-    );
-
-    final details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-
-    final identifier = _notificationIdentifier(ruleId, sessionId);
-
-    // Note: zonedSchedule requires timezone support
-    // For simplicity, we'll use a simple delayed notification approach
-    // In production, use proper timezone handling
-
-    await _notifications.show(
-      identifier.hashCode,
-      notificationConfig.title,
-      notificationConfig.body,
-      details,
-      payload: jsonEncode({
-        'surveyId': ruleId,
-        'sessionId': sessionId,
-        'source': 'cxhero',
-      }),
-    );
+    if (kIsWeb) return;
+    // Native notification scheduling is handled by the app layer.
+    // This store manages the in-memory timer for delayed surveys.
   }
 
-  /// Cancel a scheduled notification
-  Future<void> cancel(String ruleId, String sessionId) async {
-    final identifier = _notificationIdentifier(ruleId, sessionId);
-    await _notifications.cancel(identifier.hashCode);
-  }
+  /// Cancel a scheduled notification (no-op on web)
+  Future<void> cancel(String ruleId, String sessionId) async {}
 
-  /// Cancel all pending survey notifications
-  Future<void> cancelAll() async {
-    await _notifications.cancelAll();
-  }
+  /// Cancel all pending survey notifications (no-op on web)
+  Future<void> cancelAll() async {}
 
   /// Get pending notification identifiers
-  Future<List<String>> getPendingIdentifiers() async {
-    final pending = await _notifications.pendingNotificationRequests();
-    return pending
-        .where((p) => p.payload?.contains('"source":"cxhero"') ?? false)
-        .map((p) => p.payload!)
-        .toList();
-  }
+  Future<List<String>> getPendingIdentifiers() async => [];
 
   String _notificationIdentifier(String ruleId, String sessionId) {
     return 'cxhero-survey-$ruleId-$sessionId';

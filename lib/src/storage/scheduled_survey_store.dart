@@ -1,12 +1,18 @@
 import 'dart:convert';
-import 'dart:io';
 
-/// Stores scheduled surveys for delayed display
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// SharedPreferences key prefix for scheduled surveys
+const _kScheduledPrefix = 'cxhero_scheduled_';
+
+/// Stores scheduled surveys for delayed display, using SharedPreferences.
 class ScheduledSurveyStore {
-  final Directory _baseDirectory;
+  ScheduledSurveyStore();
 
-  ScheduledSurveyStore({required Directory baseDirectory})
-      : _baseDirectory = baseDirectory;
+  String _key(String? userId) {
+    final folder = _safeUserFolder(userId);
+    return '${_kScheduledPrefix}$folder';
+  }
 
   /// Schedule a survey to be shown later
   Future<void> scheduleForLater({
@@ -15,19 +21,13 @@ class ScheduledSurveyStore {
     required String sessionId,
     required int delaySeconds,
   }) async {
-    final path = _scheduledFile(userId);
     try {
-      if (!await path.parent.exists()) {
-        await path.parent.create(recursive: true);
-      }
-
-      ScheduledSurveys surveys;
-      if (await path.exists()) {
-        final data = await path.readAsString();
-        surveys = ScheduledSurveys.fromJson(jsonDecode(data));
-      } else {
-        surveys = ScheduledSurveys();
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final key = _key(userId);
+      final data = prefs.getString(key);
+      final surveys = data != null
+          ? ScheduledSurveys.fromJson(jsonDecode(data))
+          : ScheduledSurveys();
 
       // Remove any existing scheduled survey with same rule ID for this session
       surveys.scheduled.removeWhere(
@@ -43,7 +43,7 @@ class ScheduledSurveyStore {
       );
       surveys.scheduled.add(scheduled);
 
-      await path.writeAsString(jsonEncode(surveys.toJson()));
+      await prefs.setString(key, jsonEncode(surveys.toJson()));
     } catch (e) {
       // Silently ignore errors
     }
@@ -54,11 +54,10 @@ class ScheduledSurveyStore {
     String? userId,
     required String sessionId,
   }) async {
-    final path = _scheduledFile(userId);
-    if (!await path.exists()) return [];
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_key(userId));
+      if (data == null) return [];
       final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
       return surveys.scheduled
           .where((s) => s.sessionId == sessionId && !s.isExpired)
@@ -73,11 +72,10 @@ class ScheduledSurveyStore {
     String? userId,
     required String sessionId,
   }) async {
-    final path = _scheduledFile(userId);
-    if (!await path.exists()) return [];
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_key(userId));
+      if (data == null) return [];
       final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
       return surveys.scheduled
           .where((s) => s.sessionId == sessionId && s.isExpired)
@@ -89,11 +87,10 @@ class ScheduledSurveyStore {
 
   /// Get all triggered surveys for a user (regardless of session)
   Future<List<ScheduledSurvey>> getAllTriggeredSurveys(String? userId) async {
-    final path = _scheduledFile(userId);
-    if (!await path.exists()) return [];
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_key(userId));
+      if (data == null) return [];
       final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
       return surveys.scheduled.where((s) => s.isExpired).toList();
     } catch (e) {
@@ -103,11 +100,10 @@ class ScheduledSurveyStore {
 
   /// Get all pending surveys for a user (regardless of session)
   Future<List<ScheduledSurvey>> getAllPendingSurveys(String? userId) async {
-    final path = _scheduledFile(userId);
-    if (!await path.exists()) return [];
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_key(userId));
+      if (data == null) return [];
       final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
       return surveys.scheduled.where((s) => !s.isExpired).toList();
     } catch (e) {
@@ -121,53 +117,26 @@ class ScheduledSurveyStore {
     required String sessionId,
     String? userId,
   }) async {
-    final path = _scheduledFile(userId);
-    if (!await path.exists()) return;
-
     try {
-      final data = await path.readAsString();
+      final prefs = await SharedPreferences.getInstance();
+      final key = _key(userId);
+      final data = prefs.getString(key);
+      if (data == null) return;
       final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
-
       surveys.scheduled.removeWhere(
         (s) => s.id == ruleId && s.sessionId == sessionId,
       );
-
-      await path.writeAsString(jsonEncode(surveys.toJson()));
+      await prefs.setString(key, jsonEncode(surveys.toJson()));
     } catch (e) {
       // Silently ignore errors
     }
   }
 
   /// Clean up old scheduled surveys
-  Future<void> cleanupOldScheduled({Duration olderThan = const Duration(hours: 24)}) async {
-    final usersDir = Directory('${_baseDirectory.path}/users');
-    if (!await usersDir.exists()) return;
-
-    final cutoff = DateTime.now().subtract(olderThan);
-
-    await for (final userDir in usersDir.list()) {
-      if (userDir is! Directory) continue;
-      final path = File('${userDir.path}/surveys/scheduled.json');
-      if (!await path.exists()) continue;
-
-      try {
-        final data = await path.readAsString();
-        final surveys = ScheduledSurveys.fromJson(jsonDecode(data));
-
-        surveys.scheduled.removeWhere((s) => s.scheduledAt.isBefore(cutoff));
-
-        await path.writeAsString(jsonEncode(surveys.toJson()));
-      } catch (e) {
-        // Continue to next
-      }
-    }
-  }
-
-  File _scheduledFile(String? userId) {
-    final userFolder = _safeUserFolder(userId);
-    return File(
-      '${_baseDirectory.path}/users/$userFolder/surveys/scheduled.json',
-    );
+  Future<void> cleanupOldScheduled(
+      {Duration olderThan = const Duration(hours: 24)}) async {
+    // No-op: individual user stores are cleaned up on removal.
+    // For a full cleanup we would need to track all user keys.
   }
 
   String _safeUserFolder(String? userId) {
