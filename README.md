@@ -27,6 +27,10 @@ Lightweight event tracking for Flutter with per-session and optional user-id sco
 - Rich trigger operators (eq, ne, gt, gte, lt, lte, contains, notContains, exists)
 - Remote config loading with auto-refresh
 
+## Web Configurator
+
+Use the **[CXHero Web Configurator](https://cx-hero.web.app)** to visually design your survey rules and export a ready-to-use `surveys.json`. The tool includes a live iOS preview, event simulation, and schema validation.
+
 ## Storage Layout
 
 - Base directory: `ApplicationDocumentsDirectory/CXHero`
