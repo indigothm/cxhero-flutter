@@ -55,12 +55,12 @@ class _SurveySheetState extends State<SurveySheet> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: colorScheme.onSurface.withOpacity(0.1),
+                      color: colorScheme.onSurface.withValues(alpha: 0.1),
                     ),
                     child: Icon(
                       Icons.close,
                       size: 16,
-                      color: colorScheme.onSurface.withOpacity(0.6),
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -109,7 +109,7 @@ class _SurveySheetState extends State<SurveySheet> {
           widget.rule.message,
           style: TextStyle(
             fontSize: 16,
-            color: colorScheme.onSurface.withOpacity(0.7),
+            color: colorScheme.onSurface.withValues(alpha: 0.7),
             height: 1.4,
           ),
           textAlign: TextAlign.center,
@@ -178,9 +178,7 @@ class _SurveySheetState extends State<SurveySheet> {
           spacing: 12,
           runSpacing: 12,
           alignment: WrapAlignment.center,
-          children: config.options.asMap().entries.map((entry) {
-            final index = entry.key;
-            final option = entry.value;
+          children: config.options.map((option) {
             return SelectableRatingButton(
               label: option,
               isDark: isDark,
@@ -233,7 +231,7 @@ class _SurveySheetState extends State<SurveySheet> {
             color: isDark ? const Color(0xFF2E2E2E) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: colorScheme.onSurface.withOpacity(0.2),
+              color: colorScheme.onSurface.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -243,7 +241,7 @@ class _SurveySheetState extends State<SurveySheet> {
             decoration: InputDecoration(
               hintText: placeholder,
               hintStyle: TextStyle(
-                color: colorScheme.onSurface.withOpacity(0.4),
+                color: colorScheme.onSurface.withValues(alpha: 0.4),
               ),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.all(16),
@@ -261,7 +259,7 @@ class _SurveySheetState extends State<SurveySheet> {
                   fontSize: 12,
                   color: _textResponse.length > maxLength
                       ? Colors.red
-                      : colorScheme.onSurface.withOpacity(0.5),
+                      : colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
             ),
@@ -276,7 +274,7 @@ class _SurveySheetState extends State<SurveySheet> {
         color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF7F7F7),
         border: Border(
           top: BorderSide(
-            color: colorScheme.onSurface.withOpacity(0.1),
+            color: colorScheme.onSurface.withValues(alpha: 0.1),
           ),
         ),
       ),
@@ -288,7 +286,7 @@ class _SurveySheetState extends State<SurveySheet> {
           style: ElevatedButton.styleFrom(
             backgroundColor: colorScheme.primary,
             foregroundColor: colorScheme.onPrimary,
-            disabledBackgroundColor: colorScheme.onSurface.withOpacity(0.3),
+            disabledBackgroundColor: colorScheme.onSurface.withValues(alpha: 0.3),
             minimumSize: const Size(double.infinity, 52),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -428,7 +426,7 @@ class RatingButton extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -492,7 +490,7 @@ class SelectableRatingButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
               blurRadius: isSelected ? 12 : 8,
               offset: Offset(0, isSelected ? 4 : 2),
             ),

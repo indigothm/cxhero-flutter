@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/survey_config.dart';
@@ -54,7 +52,4 @@ class SurveyNotificationScheduler {
   /// Get pending notification identifiers
   Future<List<String>> getPendingIdentifiers() async => [];
 
-  String _notificationIdentifier(String ruleId, String sessionId) {
-    return 'cxhero-survey-$ruleId-$sessionId';
-  }
 }

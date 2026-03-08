@@ -44,7 +44,7 @@ class _SurveyTriggerState extends State<SurveyTrigger>
 
   final _shownThisSession = <String>{};
   String? _lastSessionId;
-  SurveyRule? _activeRule;
+
   final _scheduledTimers = <String, Timer>{};
 
   StreamSubscription<Event>? _eventSubscription;
@@ -218,7 +218,7 @@ class _SurveyTriggerState extends State<SurveyTrigger>
     if (!mounted) return;
 
     setState(() {
-      _activeRule = rule;
+
     });
 
     // Mark as shown
@@ -252,22 +252,22 @@ class _SurveyTriggerState extends State<SurveyTrigger>
         onSubmitOption: (option) {
           _recorder.record('survey_response', properties: {
             'id': EventValue.string(rule.id),
-            'type': EventValue.string('choice'),
+            'type': const EventValue.string('choice'),
             'option': EventValue.string(option),
           });
           _markCompleted(rule.id, userId);
           Navigator.of(sheetContext).pop();
-          if (mounted) setState(() => _activeRule = null);
+          if (mounted) setState(() {});
         },
         onSubmitText: (text) {
           _recorder.record('survey_response', properties: {
             'id': EventValue.string(rule.id),
-            'type': EventValue.string('text'),
+            'type': const EventValue.string('text'),
             'text': EventValue.string(text),
           });
           _markCompleted(rule.id, userId);
           Navigator.of(sheetContext).pop();
-          if (mounted) setState(() => _activeRule = null);
+          if (mounted) setState(() {});
         },
         onClose: () {
           _recorder.record('survey_dismissed', properties: {
@@ -275,7 +275,7 @@ class _SurveyTriggerState extends State<SurveyTrigger>
             'responseType': EventValue.string(rule.response.analyticsType),
           });
           Navigator.of(sheetContext).pop();
-          if (mounted) setState(() => _activeRule = null);
+          if (mounted) setState(() {});
         },
       ),
     );

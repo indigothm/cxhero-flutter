@@ -11,7 +11,7 @@ class SurveyGatingStore {
 
   String _key(String? userId) {
     final folder = _safeUserFolder(userId);
-    return '${_kGatingPrefix}$folder';
+    return '$_kGatingPrefix$folder';
   }
 
   /// Check if a survey can be shown based on gating rules

@@ -11,7 +11,7 @@ class ScheduledSurveyStore {
 
   String _key(String? userId) {
     final folder = _safeUserFolder(userId);
-    return '${_kScheduledPrefix}$folder';
+    return '$_kScheduledPrefix$folder';
   }
 
   /// Schedule a survey to be shown later
